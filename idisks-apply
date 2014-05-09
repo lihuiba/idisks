@@ -1,0 +1,102 @@
+#!/usr/bin/python
+
+import sys, os, os.path
+import subprocess
+import glob
+import re
+
+
+def logAndCall(func):
+	def docall(*arguments, **namedArguments):
+        	print "log: %s(*%s, **%s)" %\
+                      (func.__name__, arguments, namedArguments)
+        	func(*arguments, **namedArguments)
+	return docall
+
+def mydir():
+	return os.path.dirname(os.path.abspath(__file__))
+
+
+class tgt:
+	_target=None
+	_targets={}
+	_lun=None
+	def __init__(self):
+		target = None
+		iqn = None
+		lun = None
+		store = None
+		ptarget = ('Target ', re.compile("(\d*): (.*)"), self._meet_target )
+		plun =    ('        LUN: ', re.compile("(\d*)"), self._meet_lun)
+		pstore =  ('            Backing store path: ', re.compile("(.*)"), self._meet_store)
+		patterns = (ptarget, plun, pstore)
+		p=subprocess.Popen('tgt-admin -s', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		for line in p.stdout:
+			for p in patterns:
+				if not line.startswith(p[0]):
+					continue
+				line = line[len(p[0]):]
+				m=p[1].match(line)
+				if not m:
+					continue
+				p[2](m.groups())
+	def _meet_target(self, m):
+		iqn = m[1]
+		target = int(m[0])
+		if not target in self._targets:
+			t = iqn.split(':')
+			if len(t)==1:
+				return
+			node=t[-1]					
+			self._targets[target] = {'iqn': iqn, 'node': node}
+		self._target = self._targets[target]
+	def _meet_lun(self, m):
+		lun = int(m[0])
+		target = self._target
+		if not target:
+			return
+		if not lun in target:
+			target[lun] = {}
+		self._lun = target[lun]
+	def _meet_store(self, m):
+		if not self_.lun:
+			return
+		store=m[0]
+		if store!='None':
+			self._lun['store'] = store
+
+
+argc=len(sys.argv)
+if argc>=2 and (sys.argv[1]=='-h' or sys.argv[1]=='--help'):
+	print "Usage:\n{0} [node] [disk] [directory]\n"
+	sys.exit(0)
+
+node = argc>=2 and sys.argv[1] or '*'
+disk = argc>=3 and sys.argv[2] or '*'
+dir = argc>=4 and sys.argv[4] or os.path.join(mydir(), 'targets.d')
+
+if not os.path.isdir(dir):
+	print "config directory NOT exists: '{0}'".format(dir)
+	sys.exit(1)
+
+os.chdir(dir)
+path=os.path.join(node, disk)
+print "searching for '{0}/{0}'".format(dir, path)
+items=glob.glob(path)
+items.sort()
+for item in items:
+	x = os.path.split(item)
+	disk = x[1]
+	x = os.path.split(x[0])
+	node = x[1]
+	print "applying node '{0}', disk '{1}'".format(node, disk)
+
+t=tgt()
+print t._targets
+	
+
+#print "os.symlink('{0}', '{1}')".format(store, cfile)
+#os.symlink=logAndCall(os.symlink)
+#os.symlink(store, cfile)
+
+

@@ -14,18 +14,13 @@ def mydir():
 	return os.path.dirname(os.path.abspath(__file__))
 
 argc=len(sys.argv)
-if argc<4 or sys.argv[1]=='-h' or sys.argv[1]=='--help':
-	print "Usage:\n{0} node disk backing-store [directory]\n".format(os.path.basename(__file__))
+if argc<3 or sys.argv[1]=='-h' or sys.argv[1]=='--help':
+	print "Usage:\n{0} node disk [directory]\n".format(os.path.basename(__file__))
 	sys.exit(0)
 
 node = sys.argv[1]
 disk = sys.argv[2]
-store = os.path.abspath(sys.argv[3])
-dir = argc>=5 and sys.argv[4] or os.path.join(mydir(), 'targets.d')
-
-if not os.path.exists(store) or os.path.isdir(store):
-	print "Backing store must exist and must NOT be directory: '{0}'".format(store)
-	sys.exit(1)
+dir = argc>=4 and sys.argv[4] or os.path.join(mydir(), 'targets.d')
 
 dir=os.path.join(dir, node)
 if not os.path.isdir(dir):
@@ -33,12 +28,12 @@ if not os.path.isdir(dir):
 	sys.exit(1)
 
 cfile=os.path.join(dir, disk)
-if os.path.exists(cfile):
-	print "config file ALREADY exists: '{0}'".format(cfile)
+if not os.path.exists(cfile):
+	print "config file NOT exists: '{0}'".format(cfile)
 	sys.exit(1)
 
 #print "os.symlink('{0}', '{1}')".format(store, cfile)
-os.symlink=logAndCall(os.symlink)
-os.symlink(store, cfile)
+os.remove=logAndCall(os.remove)
+os.remove(cfile)
 
 
