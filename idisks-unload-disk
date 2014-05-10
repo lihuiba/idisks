@@ -1,17 +1,8 @@
 #!/usr/bin/python
 
 import sys, os, os.path
+from utils import *
 
-
-def logAndCall(func):
-	def docall(*arguments, **namedArguments):
-        	print "log: %s(*%s, **%s)" %\
-                      (func.__name__, arguments, namedArguments)
-        	func(*arguments, **namedArguments)
-	return docall
-
-def mydir():
-	return os.path.dirname(os.path.abspath(__file__))
 
 argc=len(sys.argv)
 if argc<3 or sys.argv[1]=='-h' or sys.argv[1]=='--help':

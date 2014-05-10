@@ -1,0 +1,56 @@
+#!/usr/bin/python
+
+import sys, os, os.path
+from tgtadm import tgtadm
+from utils import *
+
+
+argc=len(sys.argv)
+if argc>=2 and (sys.argv[1]=='-h' or sys.argv[1]=='--help'):
+	print "Usage:\n{0} [node] [disk] [directory]\n"
+	sys.exit(0)
+
+pnode = argc>=2 and sys.argv[1] or '*'
+pdisk = argc>=3 and sys.argv[2] or '*'
+pdir = argc>=4 and sys.argv[4] or os.path.join(mydir(), 'targets.d')
+
+if not os.path.isdir(pdir):
+	print "config directory NOT exists: '{0}'".format(pdir)
+	sys.exit(1)
+
+def process_node(node):
+	if pdisk=='*':
+		tid = tgt.delete_target(node)
+		print "  deleting target {0} for node {0}".format(tid, node)
+		return
+	target = tgt.lookup_target_by_node(node)
+	if not target: 
+		print "  no target found for node {0}".format(node)
+		return
+	disks = listdisks()
+#	disks.sort()
+	if len(disks)==0:
+		print "  no disk to stop"
+		return
+	for i in range(len(disks)):
+		disk = disks[i]
+		if not fnmatch.fnmatch(disk, pdisk): continue
+		lid = i+1
+		lun = target.get(lid)
+		if lun:
+			print "  deleting lun {0} for disk '{1}'".format(lid, disk)
+			tgt.delete_lun(target, lid)
+
+
+tgt=tgtadm()
+os.chdir(pdir)
+print "switch directory to '{0}'".format(pdir)
+for node in listnodes(pnode):
+	os.chdir(node)
+	try:
+		process_node(node)
+	except:
+		import traceback 
+		traceback.print_exc()	
+	os.chdir('..')
+

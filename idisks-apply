@@ -1,69 +1,8 @@
 #!/usr/bin/python
 
 import sys, os, os.path
-import subprocess
-import glob
-import re
-
-
-def logAndCall(func):
-	def docall(*arguments, **namedArguments):
-        	print "log: %s(*%s, **%s)" %\
-                      (func.__name__, arguments, namedArguments)
-        	func(*arguments, **namedArguments)
-	return docall
-
-def mydir():
-	return os.path.dirname(os.path.abspath(__file__))
-
-
-class tgt:
-	_target=None
-	_targets={}
-	_lun=None
-	def __init__(self):
-		target = None
-		iqn = None
-		lun = None
-		store = None
-		ptarget = ('Target ', re.compile("(\d*): (.*)"), self._meet_target )
-		plun =    ('        LUN: ', re.compile("(\d*)"), self._meet_lun)
-		pstore =  ('            Backing store path: ', re.compile("(.*)"), self._meet_store)
-		patterns = (ptarget, plun, pstore)
-		p=subprocess.Popen('tgt-admin -s', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		for line in p.stdout:
-			for p in patterns:
-				if not line.startswith(p[0]):
-					continue
-				line = line[len(p[0]):]
-				m=p[1].match(line)
-				if not m:
-					continue
-				p[2](m.groups())
-	def _meet_target(self, m):
-		iqn = m[1]
-		target = int(m[0])
-		if not target in self._targets:
-			t = iqn.split(':')
-			if len(t)==1:
-				return
-			node=t[-1]					
-			self._targets[target] = {'iqn': iqn, 'node': node}
-		self._target = self._targets[target]
-	def _meet_lun(self, m):
-		lun = int(m[0])
-		target = self._target
-		if not target:
-			return
-		if not lun in target:
-			target[lun] = {}
-		self._lun = target[lun]
-	def _meet_store(self, m):
-		if not self_.lun:
-			return
-		store=m[0]
-		if store!='None':
-			self._lun['store'] = store
+from tgtadm import tgtadm
+from utils import *
 
 
 argc=len(sys.argv)
@@ -71,32 +10,61 @@ if argc>=2 and (sys.argv[1]=='-h' or sys.argv[1]=='--help'):
 	print "Usage:\n{0} [node] [disk] [directory]\n"
 	sys.exit(0)
 
-node = argc>=2 and sys.argv[1] or '*'
-disk = argc>=3 and sys.argv[2] or '*'
-dir = argc>=4 and sys.argv[4] or os.path.join(mydir(), 'targets.d')
+pnode = argc>=2 and sys.argv[1] or '*'
+pdisk = argc>=3 and sys.argv[2] or '*'
+pdir = argc>=4 and sys.argv[4] or os.path.join(mydir(), 'targets.d')
 
-if not os.path.isdir(dir):
-	print "config directory NOT exists: '{0}'".format(dir)
+if not os.path.isdir(pdir):
+	print "config directory NOT exists: '{0}'".format(pdir)
 	sys.exit(1)
 
-os.chdir(dir)
-path=os.path.join(node, disk)
-print "searching for '{0}/{0}'".format(dir, path)
-items=glob.glob(path)
-items.sort()
-for item in items:
-	x = os.path.split(item)
-	disk = x[1]
-	x = os.path.split(x[0])
-	node = x[1]
-	print "applying node '{0}', disk '{1}'".format(node, disk)
 
-t=tgt()
-print t._targets
+tgt=tgtadm()
+
+def process_node(node):
+	print "Node: '{0}'".format(node)
+	target = tgt.lookup_target_by_node(node)
+	if not target:
+		print "  creating a target"
+		target = tgt.create_target(node)
+	disks = listdisks()
+	if len(disks)==0:
+		print "  no disk found"
+	for i in range(len(disks)):
+		disk = disks[i]
+		if not fnmatch.fnmatch(disk, pdisk): continue
+		diskpath = os.readlink(disk)
+	 	# print "  applying node '{0}', disk '{1}' ({2})".format(node, disk, diskpath)
+		lid = i+1
+		lun = target.get(lid)
+		if not lun:
+			print "  creating lun {0} for disk '{1}'".format(lid, disk)
+			tgt.create_lun(target, lid, diskpath)
+			continue
+		if os.path.realpath(lun['store']) == os.path.realpath(diskpath): 
+			print "  keeping lun {0} for disk '{1}' unchanged".format(lid, disk)
+			continue
+		print "  deleting lun {0}".format(lid)
+		tgt.delete_lun(target, lid)
+		print "  creating lun {0} for disk '{1}'".format(lid, disk)
+		tgt.create_lun(target, lid, diskpath)
 	
+	moreluns = tgt.get_luns(target)
+	moreluns = [x for x in moreluns if x>lid]
+	for lid in moreluns:
+		print "  deleting unused lun {0}".format(lid)
+		tgt.delete_lun(target, lid)	
 
-#print "os.symlink('{0}', '{1}')".format(store, cfile)
-#os.symlink=logAndCall(os.symlink)
-#os.symlink(store, cfile)
+
+os.chdir(pdir)
+# print "switch directory to '{0}'".format(pdir)
+for node in listnodes(pnode):
+	os.chdir(node)
+	try:
+		process_node(node)
+	except:
+		import traceback 
+		traceback.print_exc()	
+	os.chdir('..')
 
 
